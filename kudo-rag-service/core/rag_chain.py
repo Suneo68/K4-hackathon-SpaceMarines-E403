@@ -1,12 +1,70 @@
+import json
 import logging
 from google import genai
 from config import settings
 from core.vector_store import query_documents
+from core.experts_db import get_all_tags
 
 logger = logging.getLogger(__name__)
 
 # Fallback response message adhering to HAX Rules G10 & G2
 DEFAULT_FALLBACK = "Em chưa tìm thấy thông tin này trong các kênh thông báo/bài học, em đã ghi nhận để TA hỗ trợ nhé!"
+
+def route_to_expert(user_query: str) -> str:
+    """Returns the best matching tag or None based on user query"""
+    tags = get_all_tags()
+    if not tags:
+        return None
+        
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    prompt = (
+        "Bạn là một hệ thống phân luồng (Router). "
+        "Dưới đây là danh sách các lĩnh vực chuyên môn hiện có: "
+        f"{json.dumps(tags, ensure_ascii=False)}\n\n"
+        f"Câu hỏi của người dùng: '{user_query}'\n\n"
+        "Hãy chọn 1 lĩnh vực phù hợp nhất từ danh sách trên để người dùng có thể hỏi chuyên gia. "
+        "Nếu không có lĩnh vực nào phù hợp, hãy trả về 'NONE'. "
+        "Chỉ trả về ĐÚNG TÊN LĨNH VỰC hoặc 'NONE', KHÔNG giải thích gì thêm."
+    )
+    
+    try:
+        response = client.models.generate_content(
+            model=settings.LLM_MODEL,
+            contents=prompt,
+        )
+        result = response.text.strip().lower()
+        if result in tags:
+            return result
+        return None
+    except Exception as e:
+        logger.error(f"Error in route_to_expert: {e}")
+        return None
+
+
+def summarize_text(text: str) -> str:
+    """
+    Summarize a given block of text using Gemini.
+    """
+    if not text.strip():
+        return "Không có nội dung nào để tóm tắt."
+        
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    prompt = (
+        "Bạn là một trợ giảng AI mẫn cán. "
+        "Hãy đọc các tin nhắn/thông báo sau đây và viết một bản tóm tắt thật ngắn gọn, súc tích, "
+        "nhấn mạnh vào các sự kiện, hạn chót (deadline) hoặc tài liệu quan trọng.\n\n"
+        f"Nội dung cần tóm tắt:\n{text}"
+    )
+    
+    try:
+        response = client.models.generate_content(
+            model=settings.LLM_MODEL,
+            contents=prompt,
+        )
+        return response.text
+    except Exception as e:
+        logger.error(f"Error during summarization: {e}")
+        return "Xin lỗi, em đang gặp chút sự cố khi tóm tắt thông tin."
 
 
 def generate_rag_answer(user_query: str) -> tuple[str, list[str]]:

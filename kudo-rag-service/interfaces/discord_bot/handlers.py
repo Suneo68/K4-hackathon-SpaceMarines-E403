@@ -5,7 +5,8 @@ from discord.ext import commands
 from config import settings
 from core.ingestion import prepare_discord_message
 from core.vector_store import upsert_documents, delete_document
-from core.rag_chain import generate_rag_answer
+from core.rag_chain import generate_rag_answer, summarize_text, route_to_expert, DEFAULT_FALLBACK
+from core import experts_db
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,14 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                         answer, sources = generate_rag_answer(user_query)
 
                         reply_text = answer
-                        if sources:
+                        if answer == DEFAULT_FALLBACK:
+                            expert_tag = route_to_expert(user_query)
+                            if expert_tag:
+                                experts = experts_db.get_experts_by_tag(expert_tag)
+                                if experts:
+                                    mentions = " ".join([f"<@{u}>" for u in experts])
+                                    reply_text = f"Em chưa tìm thấy thông tin này trong tài liệu. Tuy nhiên, em nhận thấy câu hỏi liên quan đến **{expert_tag}**. Nhờ chuyên gia {mentions} vào hỗ trợ bạn nhé!"
+                        elif sources:
                             reply_text += "\n\n📌 **Nguồn tham khảo:**\n" + "\n".join([f"• {src}" for src in sources])
 
                         if len(reply_text) <= 2000:
@@ -329,7 +337,14 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             answer, sources = generate_rag_answer(question)
             
             reply_text = answer
-            if sources:
+            if answer == DEFAULT_FALLBACK:
+                expert_tag = route_to_expert(question)
+                if expert_tag:
+                    experts = experts_db.get_experts_by_tag(expert_tag)
+                    if experts:
+                        mentions = " ".join([f"<@{u}>" for u in experts])
+                        reply_text = f"Em chưa tìm thấy thông tin này trong tài liệu. Tuy nhiên, em nhận thấy câu hỏi liên quan đến **{expert_tag}**. Nhờ chuyên gia {mentions} vào hỗ trợ bạn nhé!"
+            elif sources:
                 reply_text += "\n\n📌 **Nguồn tham khảo:**\n" + "\n".join([f"• {src}" for src in sources])
             
             # Cắt nhỏ tin nhắn nếu dài hơn 2000 ký tự
@@ -343,3 +358,91 @@ def setup_bot_handlers(bot: discord.Client) -> None:
         except Exception as e:
             logger.error(f"Error in /ask command: {e}", exc_info=True)
             await interaction.followup.send("⚠️ Có lỗi xảy ra khi xử lý câu hỏi của bạn. Vui lòng thử lại sau!", ephemeral=True)
+
+    @bot.tree.command(name="tong_hop", description="Tổng hợp nhanh các thông báo trong kênh")
+    @app_commands.describe(days="Số ngày muốn tổng hợp (mặc định 1 ngày, tối đa 30 ngày)")
+    async def tong_hop_command(interaction: discord.Interaction, days: int = 1):
+        if days < 1 or days > 30:
+            await interaction.response.send_message("⚠️ Số ngày tổng hợp phải từ 1 đến 30 ngày.", ephemeral=True)
+            return
+            
+        await interaction.response.defer(ephemeral=False) # Để mọi người cùng đọc
+        
+        try:
+            from datetime import datetime, timedelta, timezone
+            after_date = datetime.now(timezone.utc) - timedelta(days=days)
+            
+            # Thu thập tin nhắn (limit=200 để lấy đủ số lượng tin nhắn trong nhiều ngày)
+            messages = []
+            async for msg in interaction.channel.history(limit=200, after=after_date):
+                if not msg.author.bot and msg.content.strip():
+                    # Thêm ngày tháng để AI dễ tóm tắt
+                    date_str = msg.created_at.strftime("%d/%m")
+                    messages.append(f"[{date_str}] [{msg.author.display_name}]: {msg.content}")
+            
+            if not messages:
+                await interaction.followup.send(f"Không có thông báo nào trong {days} ngày qua.")
+                return
+                
+            full_text = "\n".join(messages)
+            
+            # Gửi cho Gemini tóm tắt
+            summary = summarize_text(f"Hãy tóm tắt các sự kiện trong {days} ngày qua:\n{full_text}")
+            
+            reply_text = f"📢 **TỔNG HỢP THÔNG BÁO #{interaction.channel.name} ({days} NGÀY QUA)**\n\n{summary}"
+            
+            if len(reply_text) <= 2000:
+                await interaction.followup.send(reply_text)
+            else:
+                chunks = [reply_text[i:i+1900] for i in range(0, len(reply_text), 1900)]
+                for chunk in chunks:
+                    await interaction.followup.send(chunk)
+                    
+        except Exception as e:
+            logger.error(f"Error in /tong_hop command: {e}", exc_info=True)
+            await interaction.followup.send("⚠️ Có lỗi xảy ra khi tổng hợp thông tin.", ephemeral=True)
+
+    async def tag_autocomplete(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        tags = experts_db.get_all_tags()
+        # Filter based on user's current input and limit to 25 choices (Discord API limit)
+        choices = [
+            app_commands.Choice(name=tag, value=tag)
+            for tag in tags if current.lower() in tag.lower()
+        ][:25]
+        return choices
+
+    @bot.tree.command(name="add_expert", description="[Admin] Gắn lĩnh vực chuyên môn cho một thành viên BTC")
+    @app_commands.describe(user="Thành viên BTC", tag="Lĩnh vực (vd: kỹ_thuật, hậu_cần, hành_chính)")
+    @app_commands.autocomplete(tag=tag_autocomplete)
+    @app_commands.default_permissions(administrator=True)
+    async def add_expert_command(interaction: discord.Interaction, user: discord.Member, tag: str):
+        experts_db.add_expert(tag, str(user.id))
+        await interaction.response.send_message(f"✅ Đã gán lĩnh vực `{tag}` cho {user.mention}.", ephemeral=True)
+
+    @bot.tree.command(name="remove_expert", description="[Admin] Gỡ lĩnh vực chuyên môn của một thành viên")
+    @app_commands.describe(user="Thành viên BTC", tag="Lĩnh vực cần gỡ")
+    @app_commands.autocomplete(tag=tag_autocomplete)
+    @app_commands.default_permissions(administrator=True)
+    async def remove_expert_command(interaction: discord.Interaction, user: discord.Member, tag: str):
+        success = experts_db.remove_expert(tag, str(user.id))
+        if success:
+            await interaction.response.send_message(f"✅ Đã gỡ lĩnh vực `{tag}` khỏi {user.mention}.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"⚠️ Không tìm thấy lĩnh vực `{tag}` cho {user.mention}.", ephemeral=True)
+
+    @bot.tree.command(name="list_experts", description="Xem danh sách Danh bạ Chuyên gia hiện tại")
+    async def list_experts_command(interaction: discord.Interaction):
+        db = experts_db.get_full_db()
+        if not db:
+            await interaction.response.send_message("Danh bạ chuyên gia hiện đang trống.", ephemeral=True)
+            return
+            
+        lines = ["📋 **DANH BẠ CHUYÊN GIA (EXPERT DIRECTORY)**"]
+        for tag, users in db.items():
+            mentions = ", ".join([f"<@{u}>" for u in users])
+            lines.append(f"• **{tag}**: {mentions}")
+            
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
