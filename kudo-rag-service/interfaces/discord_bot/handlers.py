@@ -94,3 +94,69 @@ def setup_bot_handlers(bot: discord.Client) -> None:
 
         # Process any command decorators registered on the bot
         await bot.process_commands(message)
+
+    @bot.event
+    async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+        # Ignore bot's own reactions
+        if payload.member and payload.member.bot:
+            return
+
+        # Check if emoji is the designated curation emoji
+        if payload.emoji.name != settings.CURATION_EMOJI:
+            return
+
+        # Check for Administrator or Manage Channels permissions
+        if not payload.member:
+            return
+            
+        perms = payload.member.guild_permissions
+        is_authorized = getattr(perms, 'administrator', False) or getattr(perms, 'manage_channels', False)
+        
+        if not is_authorized:
+            return
+
+        try:
+            channel = bot.get_channel(payload.channel_id)
+            if not channel:
+                channel = await bot.fetch_channel(payload.channel_id)
+
+            # Prevent duplicate ingestion: Ignore reactions in auto-ingest Knowledge channels
+            channel_topic = getattr(channel, 'topic', '') or ''
+            if hasattr(channel, 'parent') and channel.parent:
+                parent_topic = getattr(channel.parent, 'topic', '') or ''
+                channel_topic = f"{channel_topic} {parent_topic}"
+            
+            if settings.KNOWLEDGE_TOPIC_TAG in channel_topic.upper():
+                return
+                
+            message = await channel.fetch_message(payload.message_id)
+
+            # Determine context based on whether it is a reply
+            final_content = message.content
+            if message.reference and message.reference.message_id:
+                try:
+                    original_msg = await channel.fetch_message(message.reference.message_id)
+                    final_content = f"Câu hỏi: {original_msg.content}\nTrả lời: {message.content}"
+                except Exception as e:
+                    logger.warning(f"Could not fetch original message for reply {message.id}: {e}")
+
+            # Ingest to Vector DB
+            formatted_text, metadata = prepare_discord_message(
+                content=final_content,
+                channel_name=getattr(channel, 'name', 'unknown'),
+                author=str(message.author.display_name or message.author.name),
+                created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                jump_url=message.jump_url
+            )
+
+            if formatted_text:
+                upsert_document(
+                    doc_id=f"curated_{message.id}",
+                    text=formatted_text,
+                    metadata=metadata
+                )
+                logger.info(f"Curated message ID {message.id} via reaction by {payload.member.display_name}")
+                await message.reply(f"✅ Đã ghi nhận kiến thức này vào RAG! (Được duyệt bởi <@{payload.member.id}>)", mention_author=False)
+
+        except Exception as e:
+            logger.error(f"Error during reaction curation: {e}", exc_info=True)

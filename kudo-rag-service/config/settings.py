@@ -16,6 +16,7 @@ SANDBOX_GUILD_ID = os.getenv("SANDBOX_GUILD_ID", "")
 # Discord Channel Topic Tags (Dynamic setup via Channel Topic)
 KNOWLEDGE_TOPIC_TAG = "[KUDO-KNOWLEDGE]"
 QA_TOPIC_TAG = "[KUDO-QA]"
+CURATION_EMOJI = "✅"
 
 
 # AI Model Configurations
