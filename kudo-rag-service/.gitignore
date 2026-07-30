@@ -1,0 +1,15 @@
+# Environment variables
+.env
+
+# Database & Storage
+chroma_db/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+*.log

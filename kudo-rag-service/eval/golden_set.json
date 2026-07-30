@@ -1,0 +1,17 @@
+[
+  {
+    "id": "tc_01",
+    "question": "Deadline nộp bài CP4 là khi nào?",
+    "expected_answer_contains": "23:59"
+  },
+  {
+    "id": "tc_02",
+    "question": "Tài liệu HAX Playbook gồm những nguyên tắc nào?",
+    "expected_answer_contains": "HAX"
+  },
+  {
+    "id": "tc_03",
+    "question": "Menu căng tin hôm nay có món gì?",
+    "expected_answer_contains": "chưa tìm thấy thông tin"
+  }
+]
