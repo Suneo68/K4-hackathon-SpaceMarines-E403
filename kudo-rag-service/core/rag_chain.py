@@ -19,8 +19,8 @@ def generate_rag_answer(user_query: str) -> tuple[str, list[str]]:
     if not user_query or not user_query.strip():
         return DEFAULT_FALLBACK, []
 
-    # 1. Retrieve top-3 relevant documents from ChromaDB
-    documents, metadatas = query_documents(user_query.strip(), top_k=3)
+    # 1. Retrieve top-K relevant documents from ChromaDB
+    documents, metadatas = query_documents(user_query.strip(), top_k=settings.TOP_K_RESULTS)
 
     if not documents:
         logger.info(f"No context found in ChromaDB for query: '{user_query}'")

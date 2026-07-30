@@ -18,7 +18,11 @@ KNOWLEDGE_TOPIC_TAG = "[KUDO-KNOWLEDGE]"
 QA_TOPIC_TAG = "[KUDO-QA]"
 CURATION_EMOJI = "✅"
 
-
 # AI Model Configurations
 LLM_MODEL = "gemini-2.5-flash"
-EMBEDDING_MODEL = "text-embedding-004"
+EMBEDDING_MODEL = "gemini-embedding-2"
+TOP_K_RESULTS = 3
+
+# ChromaDB Configurations (Client-Server Mode)
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))

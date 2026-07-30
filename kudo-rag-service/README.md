@@ -35,8 +35,34 @@ Configuration variables:
 - `DISCORD_TOKEN`: Your Discord Bot token.
 - `GEMINI_API_KEY`: Google Gemini API key.
 - `SANDBOX_GUILD_ID`: Sandbox Discord server ID for testing.
+- `CHROMA_HOST` & `CHROMA_PORT`: ChromaDB Server configuration.
 
-### 3. Folder Structure
+### 3. How to Run (Development)
+Since this project uses a Client-Server architecture for the Vector Database, you need to run two separate processes locally.
+
+**Terminal 1: Start ChromaDB Server**
+```bash
+# Keep this running to serve the vector database on port 8000
+chroma run --path ./chroma_db
+```
+
+**Terminal 2: Start Discord Bot (Client)**
+```bash
+python main.py
+```
+
+### 4. Production Deployment (Docker)
+For enterprise/production deployment, use Docker Compose. This ensures the bot and database run continuously in isolated containers.
+
+```bash
+# Run the entire stack in the background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f kudo_bot
+```
+
+### 5. Folder Structure
 ```
 kudo-rag-service/
 ├── .env.example
