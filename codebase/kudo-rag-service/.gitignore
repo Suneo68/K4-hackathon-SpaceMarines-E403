@@ -1,0 +1,27 @@
+# Environment variables
+.env
+
+# Database & Storage
+chroma_db/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+*.log
+
+# Local JSON Databases
+experts_db.json
+curated_topics.json
+
+# IDEs & Editors
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db

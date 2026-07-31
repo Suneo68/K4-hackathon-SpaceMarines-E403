@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: kudo_chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_db:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+    restart: unless-stopped
+
+  kudo_bot:
+    build: .
+    container_name: kudo_bot
+    depends_on:
+      - chromadb
+    env_file:
+      - .env
+    environment:
+      # Trong mạng LAN của Docker, Bot phải gọi Chroma qua tên container (chromadb)
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    restart: unless-stopped
