@@ -66,6 +66,31 @@ def summarize_text(text: str) -> str:
         logger.error(f"Error during summarization: {e}")
         return "Xin lỗi, em đang gặp chút sự cố khi tóm tắt thông tin."
 
+def synthesize_thread_answers(old_contents: list[str], new_answer: str) -> str:
+    """
+    Combine previous answers and a new answer into one cohesive solution using LLM.
+    """
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    old_text = "\n---\n".join(old_contents)
+    prompt = (
+        "Bạn là một chuyên gia tổng hợp kiến thức. Dưới đây là các giải pháp cũ đã được lưu trữ cho một vấn đề, "
+        "và một giải pháp MỚI vừa được thêm vào.\n\n"
+        f"Các giải pháp cũ:\n{old_text}\n\n"
+        f"Giải pháp MỚI:\n{new_answer}\n\n"
+        "Nhiệm vụ: Hãy gộp tất cả các giải pháp này lại thành MỘT bài hướng dẫn/giải pháp hoàn chỉnh, mạch lạc, súc tích. "
+        "Loại bỏ các ý trùng lặp, giữ lại tất cả các góc nhìn đúng. Trình bày rõ ràng dễ hiểu."
+    )
+    
+    try:
+        response = client.models.generate_content(
+            model=settings.LLM_MODEL,
+            contents=prompt,
+        )
+        return response.text
+    except Exception as e:
+        logger.error(f"Error during synthesis: {e}")
+        return new_answer
+
 
 def generate_rag_answer(user_query: str) -> tuple[str, list[str]]:
     """

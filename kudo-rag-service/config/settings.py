@@ -21,7 +21,11 @@ CURATION_EMOJI = "✅"
 # AI Model Configurations
 LLM_MODEL = "gemini-2.5-flash"
 EMBEDDING_MODEL = "gemini-embedding-2"
-TOP_K_RESULTS = 3
+TOP_K_RESULTS = 10
+
+# Database Configurations
+MONGO_URI = os.getenv("MONGO_URI", "local")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "kudo_rag_db")
 
 # ChromaDB Configurations (Client-Server Mode)
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")

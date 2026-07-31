@@ -4,9 +4,10 @@ from discord import app_commands
 from discord.ext import commands
 from config import settings
 from core.ingestion import prepare_discord_message
-from core.vector_store import upsert_documents, delete_document
-from core.rag_chain import generate_rag_answer, summarize_text, route_to_expert, DEFAULT_FALLBACK
+from core.vector_store import upsert_documents, delete_document, get_documents_by_message_id, delete_documents_by_message_id
+from core.rag_chain import generate_rag_answer, summarize_text, route_to_expert, DEFAULT_FALLBACK, synthesize_thread_answers
 from core import experts_db
+from core import nosql_db
 
 logger = logging.getLogger(__name__)
 
@@ -158,30 +159,68 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 
             message = await channel.fetch_message(payload.message_id)
 
-            # Determine context based on whether it is a reply
-            final_content = message.content
-            if message.reference and message.reference.message_id:
+            # 1. Xác định Parent_ID và lưu vào NoSQL
+            parent_id = str(message.id)
+            original_content = ""
+            channel_name = getattr(channel, 'name', 'unknown')
+            
+            if isinstance(channel, discord.Thread):
+                parent_id = f"thread_{channel.id}"
+                try:
+                    original_msg = await channel.fetch_message(channel.id)
+                    original_content = f"Chủ đề [{channel.name}]: {original_msg.content}"
+                except Exception:
+                    original_content = f"Chủ đề [{channel.name}]"
+            elif message.reference and message.reference.message_id:
+                parent_id = f"reply_{message.reference.message_id}"
                 try:
                     original_msg = await channel.fetch_message(message.reference.message_id)
-                    final_content = f"Câu hỏi: {original_msg.content}\nTrả lời: {message.content}"
+                    original_content = f"Câu hỏi gốc: {original_msg.content}"
                 except Exception as e:
-                    logger.warning(f"Could not fetch original message for reply {message.id}: {e}")
+                    logger.warning(f"Could not fetch original message {message.reference.message_id}")
+            
+            # Ghi vào DB
+            nosql_db.upsert_message(
+                parent_id=parent_id, 
+                message_id=str(message.id), 
+                content=message.content, 
+                author=str(message.author.display_name or message.author.name)
+            )
+            
+            # 2. Lấy toàn bộ anh em và tổng hợp
+            active_messages = nosql_db.get_active_messages(parent_id)
+            
+            if not active_messages:
+                return # Mặc dù vừa add nhưng ko hiểu sao rỗng
+                
+            if len(active_messages) > 1:
+                logger.info(f"Synthesizing {len(active_messages)} active chunks for {parent_id}.")
+                synthesized = synthesize_thread_answers(active_messages[:-1], active_messages[-1])
+            else:
+                synthesized = active_messages[0]
+                
+            final_content = f"{original_content}\n\nGiải pháp/Trả lời (Đã tổng hợp):\n{synthesized}" if original_content else f"Nội dung được lưu: {synthesized}"
+            
+            target_message_id = f"synthesized_{parent_id}"
+            
+            # Xóa các chunk cũ của parent_id này trước khi lưu đè
+            delete_documents_by_message_id(target_message_id)
 
             # Ingest to Vector DB
             chunk_ids, chunks_text, metadatas = await prepare_discord_message(
-                message_id=f"curated_{message.id}",
+                message_id=target_message_id,
                 content=final_content,
                 attachments=message.attachments,
-                channel_name=getattr(channel, 'name', 'unknown'),
-                author=str(message.author.display_name or message.author.name),
+                channel_name=channel_name,
+                author="System Synthesizer",
                 created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
                 jump_url=message.jump_url
             )
 
             if chunk_ids:
                 upsert_documents(chunk_ids, chunks_text, metadatas)
-                logger.info(f"Curated message ID {message.id} via reaction by {payload.member.display_name}")
-                await message.reply(f"✅ Đã ghi nhận kiến thức này vào RAG! (Được duyệt bởi <@{payload.member.id}>)", mention_author=False)
+                logger.info(f"Upserted unified chunk {target_message_id} via reaction by {payload.member.display_name}")
+                await message.reply(f"✅ Đã ghi nhận và tổng hợp kiến thức vào RAG! (Được duyệt bởi <@{payload.member.id}>)", mention_author=False)
 
         except Exception as e:
             logger.error(f"Error during reaction curation: {e}", exc_info=True)
@@ -220,10 +259,62 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             
             if settings.KNOWLEDGE_TOPIC_TAG in channel_topic.upper():
                 return
-                
-            delete_document(f"curated_{payload.message_id}")
-            logger.info(f"Curated message ID {payload.message_id} removed via un-reaction by {member.display_name}")
+            message = await channel.fetch_message(payload.message_id)
             
+            # 1. Xác định Parent_ID và lưu vào NoSQL
+            parent_id = str(message.id)
+            original_content = ""
+            channel_name = getattr(channel, 'name', 'unknown')
+            
+            if isinstance(channel, discord.Thread):
+                parent_id = f"thread_{channel.id}"
+                try:
+                    original_msg = await channel.fetch_message(channel.id)
+                    original_content = f"Chủ đề [{channel.name}]: {original_msg.content}"
+                except Exception:
+                    original_content = f"Chủ đề [{channel.name}]"
+            elif message.reference and message.reference.message_id:
+                parent_id = f"reply_{message.reference.message_id}"
+                try:
+                    original_msg = await channel.fetch_message(message.reference.message_id)
+                    original_content = f"Câu hỏi gốc: {original_msg.content}"
+                except Exception as e:
+                    pass
+            
+            # 2. Xóa mềm trong DB
+            nosql_db.soft_delete_message(parent_id, str(message.id))
+            
+            # 3. Quét lại tình hình anh em
+            active_messages = nosql_db.get_active_messages(parent_id)
+            target_message_id = f"synthesized_{parent_id}"
+            
+            delete_documents_by_message_id(target_message_id)
+            
+            if active_messages:
+                # Vẫn còn bình luận đúng -> Tổng hợp lại các bình luận còn lại
+                if len(active_messages) > 1:
+                    synthesized = synthesize_thread_answers(active_messages[:-1], active_messages[-1])
+                else:
+                    synthesized = active_messages[0]
+                    
+                final_content = f"{original_content}\n\nGiải pháp/Trả lời (Đã tổng hợp):\n{synthesized}" if original_content else f"Nội dung được lưu: {synthesized}"
+                
+                chunk_ids, chunks_text, metadatas = await prepare_discord_message(
+                    message_id=target_message_id,
+                    content=final_content,
+                    attachments=[],
+                    channel_name=channel_name,
+                    author="System Synthesizer",
+                    created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    jump_url=message.jump_url
+                )
+                if chunk_ids:
+                    upsert_documents(chunk_ids, chunks_text, metadatas)
+                logger.info(f"Re-synthesized chunk {target_message_id} after removing message {payload.message_id}")
+            else:
+                logger.info(f"Deleted chunk {target_message_id} because all curations were removed.")
+                
+            logger.info(f"Curated message ID {payload.message_id} removed via un-reaction by {member.display_name}")
             message = await channel.fetch_message(payload.message_id)
             await channel.send(f"🗑️ Đã thu hồi kiến thức (Do <@{member.id}> bỏ duyệt).", reference=message, mention_author=False)
             

@@ -59,6 +59,24 @@ def upsert_documents(doc_ids: list[str], texts: list[str], metadatas: list[dict]
         logger.error(f"Error upserting documents: {e}", exc_info=True)
         raise e
 
+def get_documents_by_message_id(msg_id: str) -> list[str]:
+    """Retrieve all chunks belonging to a specific message_id or thread_id"""
+    try:
+        results = collection.get(where={"message_id": msg_id})
+        if results and results.get('documents'):
+            return results['documents']
+        return []
+    except Exception as e:
+        logger.error(f"Error getting documents by message_id {msg_id}: {e}")
+        return []
+
+def delete_documents_by_message_id(msg_id: str) -> None:
+    """Delete all chunks belonging to a specific message_id or thread_id"""
+    try:
+        collection.delete(where={"message_id": msg_id})
+    except Exception as e:
+        logger.error(f"Error deleting documents by message_id {msg_id}: {e}")
+
 
 def delete_document(doc_id: str) -> None:
     """

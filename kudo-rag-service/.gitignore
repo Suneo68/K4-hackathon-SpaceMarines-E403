@@ -13,3 +13,15 @@ __pycache__/
 env/
 venv/
 *.log
+
+# Local JSON Databases
+core/experts_db.json
+core/curated_topics.json
+
+# IDEs & Editors
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
