@@ -11,6 +11,12 @@
 
 
 
+*
+
+
+
+
+*
 
 **SPEC → Prototype → Demo.** Đây không phải cuộc thi code — đây là cuộc thi **tư duy sản phẩm AI**.
 
