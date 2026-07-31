@@ -2,6 +2,7 @@
 
 - Team: SpaceMarines
 - Members: 5 thanh vien
+| ---- | ---- | 
 | Trần Văn Thi | 2A202601548 |  
 | Vũ Thế Lực | 2A202602008 |  
 | Ngô Văn Linh | 2A202601929 |  
