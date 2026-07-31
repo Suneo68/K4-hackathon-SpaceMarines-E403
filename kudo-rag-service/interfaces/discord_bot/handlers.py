@@ -11,6 +11,12 @@ from core import nosql_db
 
 logger = logging.getLogger(__name__)
 
+# --- THEME & UI CONSTANTS ---
+class UI_COLORS:
+    SUCCESS = 0x2ECC71     # Xanh lá (Trả lời RAG thành công)
+    WARNING = 0xF1C40F     # Vàng (Không tìm thấy, gọi chuyên gia)
+    INFO = 0x3498DB        # Xanh dương (Dashboard, Stats)
+    DIAGNOSTIC = 0x9B59B6  # Tím (Profiler, Trace)
 
 def setup_bot_handlers(bot: discord.Client) -> None:
     """
@@ -94,31 +100,53 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                         user_query = user_query.replace(f"<@{bot.user.id}>", "").replace(f"<@!{bot.user.id}>", "")
                     user_query = user_query.strip()
 
+                    if not user_query:
+                        await message.reply("Vui lòng nhập câu hỏi sau khi tag mình nhé! (VD: `@Kudo Bot Kafka là gì?`)", mention_author=True)
+                        return
+                    
                     if user_query:
                         answer, sources = generate_rag_answer(user_query)
 
-                        reply_text = answer
                         if answer == DEFAULT_FALLBACK:
                             expert_tag = route_to_expert(user_query)
+                            mentions = ""
                             if expert_tag:
                                 experts = experts_db.get_experts_by_tag(expert_tag)
                                 if experts:
                                     mentions = " ".join([f"<@{u}>" for u in experts])
-                                    reply_text = f"Em chưa tìm thấy thông tin này trong tài liệu. Tuy nhiên, em nhận thấy câu hỏi liên quan đến **{expert_tag}**. Nhờ chuyên gia {mentions} vào hỗ trợ bạn nhé!"
-                        elif sources:
-                            reply_text += "\n\n📌 **Nguồn tham khảo:**\n" + "\n".join([f"• {src}" for src in sources])
-
-                        if len(reply_text) <= 2000:
-                            await message.reply(reply_text, mention_author=True)
+                            
+                            embed = discord.Embed(
+                                title="🔍 Chưa tìm thấy thông tin trực tiếp",
+                                description=f"Em chưa tìm thấy thông tin này trong tài liệu." + (f"\n\n👉 Nhờ chuyên gia **{expert_tag}** hỗ trợ: {mentions}" if mentions else ""),
+                                color=UI_COLORS.WARNING
+                            )
+                            embed.set_footer(text="HAX Rule G10 & G2 • Chuyển giao Chuyên gia")
+                            await message.reply(embed=embed, mention_author=True)
                         else:
-                            # Cắt nhỏ tin nhắn nếu dài hơn 2000 ký tự (Giới hạn của Discord)
-                            chunks = [reply_text[i:i+1900] for i in range(0, len(reply_text), 1900)]
-                            await message.reply(chunks[0], mention_author=True)
-                            for chunk in chunks[1:]:
-                                await message.channel.send(chunk)
+                            main_desc = answer[:3900] + ("\n\n*(Xem tiếp nội dung phía dưới...)*" if len(answer) > 3900 else "")
+                            embed = discord.Embed(
+                                title="🤖 Kudo Assistant - Phản hồi Tri thức",
+                                description=main_desc,
+                                color=UI_COLORS.SUCCESS
+                            )
+                            if sources:
+                                formatted_src = "\n".join([f"• {src}" for src in sources])
+                                embed.add_field(name="📌 Nguồn tham khảo", value=formatted_src[:1024], inline=False)
+                            embed.set_footer(text="Powered by Gemini 2.5 Flash & ChromaDB • Kudo RAG Service")
+                            await message.reply(embed=embed, mention_author=True)
+
+                            if len(answer) > 3900:
+                                remaining = answer[3900:]
+                                chunks = [remaining[i:i+4000] for i in range(0, len(remaining), 4000)]
+                                for i, chunk in enumerate(chunks):
+                                    follow_embed = discord.Embed(description=chunk, color=UI_COLORS.SUCCESS)
+                                    await message.channel.send(embed=follow_embed)
+
+
             except Exception as e:
                 logger.error(f"Error processing QA message {message.id}: {e}", exc_info=True)
                 await message.reply("⚠️ Có lỗi xảy ra khi xử lý câu hỏi của bạn. Vui lòng thử lại sau!", mention_author=True)
+
 
         # Process any command decorators registered on the bot
         await bot.process_commands(message)
@@ -397,7 +425,8 @@ def setup_bot_handlers(bot: discord.Client) -> None:
         await ctx.reply(f"🔄 Đang lội ngược dòng để cào tối đa {limit} tin nhắn cũ... Quá trình này có thể mất vài phút.")
         count = 0
         async for msg in ctx.channel.history(limit=limit):
-            if msg.author.bot or not msg.content.strip():
+            # Ignored bot messages or messages with neither content nor attachments
+            if msg.author.bot or (not msg.content.strip() and not msg.attachments):
                 continue
                 
             is_mentioned = False
@@ -407,24 +436,19 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             if is_mentioned:
                 continue
 
-            is_authorized = False
-            if hasattr(msg.author, 'guild_permissions'):
-                perms = msg.author.guild_permissions
-                is_authorized = getattr(perms, 'administrator', False) or getattr(perms, 'manage_channels', False)
-                
-            if is_authorized:
-                chunk_ids, chunks_text, metadatas = await prepare_discord_message(
-                    message_id=str(msg.id),
-                    content=msg.content,
-                    attachments=msg.attachments,
-                    channel_name=getattr(ctx.channel, 'name', 'unknown'),
-                    author=str(msg.author.display_name or msg.author.name),
-                    created_at=msg.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                    jump_url=msg.jump_url
-                )
-                if chunk_ids:
-                    upsert_documents(chunk_ids, chunks_text, metadatas)
-                    count += 1
+            chunk_ids, chunks_text, metadatas = await prepare_discord_message(
+                message_id=str(msg.id),
+                content=msg.content,
+                attachments=msg.attachments,
+                channel_name=getattr(ctx.channel, 'name', 'unknown'),
+                author=str(msg.author.display_name or msg.author.name),
+                created_at=msg.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                jump_url=msg.jump_url
+            )
+            if chunk_ids:
+                upsert_documents(chunk_ids, chunks_text, metadatas)
+                count += 1
+
                     
         await ctx.reply(f"✅ Đã quét xong. Nạp thành công {count} tin nhắn vào Não bộ RAG.")
 
@@ -448,13 +472,15 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             elif sources:
                 reply_text += "\n\n📌 **Nguồn tham khảo:**\n" + "\n".join([f"• {src}" for src in sources])
             
-            # Cắt nhỏ tin nhắn nếu dài hơn 2000 ký tự
-            if len(reply_text) <= 2000:
-                await interaction.followup.send(reply_text, ephemeral=True)
+            # Cắt nhỏ tin nhắn bằng Embed nếu dài
+            if len(reply_text) <= 3900:
+                embed = discord.Embed(description=reply_text, color=UI_COLORS.SUCCESS)
+                await interaction.followup.send(embed=embed, ephemeral=True)
             else:
-                chunks = [reply_text[i:i+1900] for i in range(0, len(reply_text), 1900)]
+                chunks = [reply_text[i:i+4000] for i in range(0, len(reply_text), 4000)]
                 for chunk in chunks:
-                    await interaction.followup.send(chunk, ephemeral=True)
+                    embed = discord.Embed(description=chunk, color=UI_COLORS.SUCCESS)
+                    await interaction.followup.send(embed=embed, ephemeral=True)
                     
         except Exception as e:
             logger.error(f"Error in /ask command: {e}", exc_info=True)
@@ -547,3 +573,95 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             lines.append(f"• **{tag}**: {mentions}")
             
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+    @bot.tree.command(name="stats", description="Xem chỉ số hoạt động hệ thống Kudo RAG Service")
+    async def stats_command(interaction: discord.Interaction):
+        try:
+            from core.vector_store import collection
+            # settings đã được import ở đầu file (from config import settings)
+            chunk_count = collection.count()
+            tags_count = len(experts_db.get_all_tags())
+            ping_ms = round(bot.latency * 1000, 1)
+            
+            embed = discord.Embed(
+                title="📊 TRẠNG THÁI HỆ THỐNG KUDO RAG SERVICE",
+                color=UI_COLORS.INFO
+            )
+            embed.add_field(name="🧠 Vector Store Count", value=f"**{chunk_count}** chunks", inline=True)
+            embed.add_field(name="👥 Danh mục Chuyên gia", value=f"**{tags_count}** lĩnh vực", inline=True)
+            embed.add_field(name="📶 Discord Gateway Ping", value=f"**{ping_ms}** ms", inline=True)
+            embed.add_field(name="⚡ LLM Engine", value=f"`{settings.LLM_MODEL}`", inline=True)
+            embed.add_field(name="📌 Embedding Model", value=f"`{settings.EMBEDDING_MODEL}`", inline=True)
+            embed.add_field(name="🗄️ ChromaDB Collection", value=f"`{collection.name}`", inline=True)
+            embed.set_footer(text="SpaceMarines Team • Live System Telemetry")
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in /stats command: {e}")
+            await interaction.response.send_message(f"⚠️ Không thể lấy thông số hệ thống: {e}", ephemeral=True)
+
+
+    @bot.tree.command(name="trace", description="[Profiling] Kiểm tra latency, token usage và luồng logic RAG của một câu hỏi")
+    @app_commands.describe(question="Nhập câu hỏi để chạy thử nghiệm profiling")
+    async def trace_command(interaction: discord.Interaction, question: str):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            from core.rag_chain import generate_rag_answer_with_trace
+            metrics = generate_rag_answer_with_trace(question)
+            
+            embed = discord.Embed(
+                title="🛠️ RAG PIPELINE DIAGNOSTICS & PROFILING",
+                color=UI_COLORS.DIAGNOSTIC
+            )
+            embed.add_field(name="💬 Câu hỏi Test", value=f"*{question[:1024]}*", inline=False)
+            
+            # Latency field
+            latency_text = (
+                f"• **Vector DB Search**: `{metrics['retrieval_time_s']}s`\n"
+                f"• **Gemini LLM Infer**: `{metrics['llm_time_s']}s`\n"
+                f"• **Total Response**: `{metrics['total_time_s']}s` ⚡"
+            )
+            embed.add_field(name="⏱️ Hiệu năng (Latency)", value=latency_text, inline=False)
+            
+            # Token usage field
+            token_text = (
+                f"• **Prompt Tokens**: `{metrics['prompt_tokens']}`\n"
+                f"• **Generated Tokens**: `{metrics['candidate_tokens']}`\n"
+                f"• **Total Tokens**: `{metrics['total_tokens']}`"
+            )
+            embed.add_field(name="🧮 Token Usage (`gemini-2.5-flash`)", value=token_text, inline=False)
+            
+            # Retrieval & Decision
+            diag_text = (
+                f"• **Chunks Retrieved**: `{metrics['retrieved_chunks_count']}` chunks\n"
+                f"• **Decision Route**: `{metrics['decision']}`\n"
+                + (f"• **Routed Expert**: `{metrics['expert_tag']}`\n" if metrics['expert_tag'] else "")
+            )
+            embed.add_field(name="🧠 Diagnostic Route", value=diag_text, inline=False)
+            
+            # Answer preview inside Embed (max 800 chars for clean UI)
+            preview_ans = metrics['answer'][:800] + ("...\n*(Nội dung đầy đủ được gửi nối tiếp ngay bên dưới)*" if len(metrics['answer']) > 800 else "")
+            embed.add_field(name="💡 Trích đoạn Phản hồi", value=preview_ans, inline=False)
+            
+            embed.set_footer(text="Kudo RAG Profiler • Performance & Cost Analytics")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Send full untruncated answer as follow-up Embeds if long
+            if len(metrics['answer']) > 800:
+                full_text = metrics['answer']
+                if metrics['sources']:
+                    full_text += "\n\n📌 **Nguồn tham khảo:**\n" + "\n".join([f"• {src}" for src in metrics['sources']])
+                
+                chunks = [full_text[i:i+4000] for i in range(0, len(full_text), 4000)]
+                for i, chunk in enumerate(chunks):
+                    follow_embed = discord.Embed(description=chunk, color=UI_COLORS.DIAGNOSTIC)
+                    if i == 0:
+                        follow_embed.title = "📄 NỘI DUNG ĐẦY ĐỦ CỦA CÂU TRẢ LỜI"
+                    await interaction.followup.send(embed=follow_embed, ephemeral=True)
+
+            
+        except Exception as e:
+            logger.error(f"Error in /trace command: {e}", exc_info=True)
+            await interaction.followup.send(f"⚠️ Lỗi khi chạy profiling: {e}", ephemeral=True)
+
+

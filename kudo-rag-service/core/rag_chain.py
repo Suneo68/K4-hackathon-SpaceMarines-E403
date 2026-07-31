@@ -162,3 +162,98 @@ def generate_rag_answer(user_query: str) -> tuple[str, list[str]]:
     except Exception as e:
         logger.error(f"Error invoking Gemini API in rag_chain: {e}", exc_info=True)
         return DEFAULT_FALLBACK, []
+
+
+def generate_rag_answer_with_trace(user_query: str) -> dict:
+    """
+    Executes RAG pipeline with high-precision latency, token metrics, and diagnostic tracing.
+    """
+    import time
+    start_total = time.perf_counter()
+    metrics = {
+        "user_query": user_query,
+        "retrieval_time_s": 0.0,
+        "llm_time_s": 0.0,
+        "total_time_s": 0.0,
+        "retrieved_chunks_count": 0,
+        "prompt_tokens": 0,
+        "candidate_tokens": 0,
+        "total_tokens": 0,
+        "answer": DEFAULT_FALLBACK,
+        "sources": [],
+        "decision": "FALLBACK_NO_CONTEXT",
+        "expert_tag": None
+    }
+
+    if not user_query or not user_query.strip():
+        metrics["total_time_s"] = round(time.perf_counter() - start_total, 4)
+        return metrics
+
+    # 1. Retrieve from ChromaDB with latency timing
+    t0_retrieval = time.perf_counter()
+    documents, metadatas = query_documents(user_query.strip(), top_k=settings.TOP_K_RESULTS)
+    metrics["retrieval_time_s"] = round(time.perf_counter() - t0_retrieval, 4)
+    metrics["retrieved_chunks_count"] = len(documents)
+
+    if not documents:
+        metrics["total_time_s"] = round(time.perf_counter() - start_total, 4)
+        return metrics
+
+    # Extract sources
+    formatted_sources: list[str] = []
+    for meta in metadatas:
+        channel = meta.get("channel_name", "kênh")
+        author = meta.get("author", "N/A")
+        jump_url = meta.get("jump_url", "")
+        source_citation = f"#{channel} (đăng bởi {author}) - Link: {jump_url}" if jump_url else f"#{channel} (đăng bởi {author})"
+        if source_citation not in formatted_sources:
+            formatted_sources.append(source_citation)
+
+    context_str = "\n\n---\n\n".join(documents)
+    prompt = (
+        "Bạn là trợ lý AI Discord cho cộng đồng khóa học AI20K (Kudo Assistant).\n"
+        "Nhiệm vụ của bạn là trả lời câu hỏi của học viên dựa CHỈ VÀO các thông tin ngữ cảnh được cung cấp dưới đây.\n\n"
+        "ÁP DỤNG CÁC QUY TẮC BẮT BUỘC (HAX Rules G10 & G2):\n"
+        "1. Trả lời CHỈ dựa vào thông tin có trong phần 'NGỮ CẢNH TRI THỨC'. Tuyệt đối không tự suy đoán, bịa đặt hoặc sử dụng kiến thức ngoài ngữ cảnh này.\n"
+        "2. Nếu phần ngữ cảnh KHÔNG chứa thông tin đủ để trả lời chính xác câu hỏi, bạn BẮT BUỘC phải trả lời chính xác câu sau:\n"
+        f'"{DEFAULT_FALLBACK}"\n'
+        "3. Giữ văn phong thân thiện, lịch sự và hỗ trợ học viên.\n\n"
+        f"NGỮ CẢNH TRI THỨC:\n{context_str}\n\n"
+        f"CÂU HỎI CỦA HỌC VIÊN:\n{user_query.strip()}"
+    )
+
+    # 2. Invoke Gemini LLM with latency and token usage tracking
+    t0_llm = time.perf_counter()
+    try:
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=settings.LLM_MODEL,
+            contents=prompt
+        )
+        metrics["llm_time_s"] = round(time.perf_counter() - t0_llm, 4)
+
+        if response and hasattr(response, 'usage_metadata') and response.usage_metadata:
+            metrics["prompt_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+            metrics["candidate_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+            metrics["total_tokens"] = getattr(response.usage_metadata, 'total_token_count', 0) or 0
+
+        answer_text = response.text.strip() if response and response.text else DEFAULT_FALLBACK
+
+        if DEFAULT_FALLBACK.lower() in answer_text.lower():
+            metrics["answer"] = DEFAULT_FALLBACK
+            metrics["sources"] = []
+            metrics["decision"] = "FALLBACK_INSUFFICIENT_CONTEXT"
+            metrics["expert_tag"] = route_to_expert(user_query)
+        else:
+            metrics["answer"] = answer_text
+            metrics["sources"] = formatted_sources
+            metrics["decision"] = "SUCCESS_GROUNDED_RAG"
+
+    except Exception as e:
+        logger.error(f"Error in generate_rag_answer_with_trace: {e}", exc_info=True)
+        metrics["answer"] = DEFAULT_FALLBACK
+        metrics["decision"] = f"ERROR ({e})"
+
+    metrics["total_time_s"] = round(time.perf_counter() - start_total, 4)
+    return metrics
+
