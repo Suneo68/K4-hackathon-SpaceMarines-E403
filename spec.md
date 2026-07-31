@@ -103,7 +103,7 @@ Loại: [X] Tối ưu tính năng có sẵn  [ ] Tính năng mới
 | **Validation**     | `_Nghiêm Quốc Huy + Vũ Thế Lực_` |
 | **Prompt**       | `_Hoàng Tuấn Hưng + Ngô Văn Linh__` |
 | **Code**  | `_Ngô Văn Linh_` |
-| **Demo**   | `_Vũ Thế Lực_` |
+| **Demo**   | `_Vũ Thế Lực + Hoàng Tuấn Hưng + Nghiêm Quốc Huy_` |
 - Willing users (≥3 tên) + kế hoạch vòng validation CP5 (3 câu hỏi, ai log):
 - Multi-prototype (nếu làm): trục khác biệt của ≥2 phương án + lý do chọn: 
 Phương án A: bot chỉ trả lời keyword tĩnh + FAQ
