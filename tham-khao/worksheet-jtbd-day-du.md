@@ -3,7 +3,7 @@
 
 # Worksheet B1 — Chân dung user & Jobs To Be Done
 
-**Nhóm:** _______ · **Hướng:** [ ] A — VLearn [ ] B — Trợ lý Học viên [ ] C — Làn mở
+**Nhóm:** SpaceMarines · **Hướng:** [ ] A — VLearn [ ] B — Trợ lý Học viên [ ] C — Làn mở
 
 > Quy tắc xuyên suốt: **không rõ job thì đừng bàn feature.**
 > File này điền trực tiếp và nộp kèm trong repo — nó là phần đầu vào của Phiếu nghiệm thu CP1.
@@ -16,7 +16,7 @@ Chỉ tra 4 thứ: ① cách nhìn thị trường qua JTBD lens · ② `job exe
 
 Job executor = người **trực tiếp** dùng giải pháp để hoàn thành job. Không phải "học viên nói chung" — chọn một vai cụ thể. Gợi ý: học viên đang-trong-buổi-học · học viên ôn tập trước quiz · học viên nghỉ buổi đang catch-up · học viên hỏi bài trên Discord · giảng viên soạn bài/quiz · TA trả lời câu hỏi lặp.
 
-**Job executor của nhóm:** ___________ · **Vì sao là người này:** ___________
+**Job executor của nhóm:** Học viên hỏi trợ lý trên Discord · **Vì sao là người này:** Học viên đôi khi không được cung cấp thông tin nhanh chóng và chính xác theo realtime.
 
 ## 2. Vẽ workflow thật của họ *(10')*
 
