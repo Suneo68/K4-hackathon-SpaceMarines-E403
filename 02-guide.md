@@ -143,9 +143,10 @@ Trước khi build sâu, dựng nhanh **≥2 phương án khác nhau ở MỘT q
 - **Luật an toàn:** ① không commit API key/.env — key để biến môi trường; ② chỉ dùng data giả hoặc data pack — không data thật của người thật; ③ repo public: trước khi push soát không key, không thông tin cá nhân, không đổ nguyên data pack lên (trích ngắn minh hoạ được).
 - **Kẹt kỹ thuật quá 20 phút: gọi TA** — CP2 chính là mốc hỗ trợ kỹ thuật. Ghi lại lỗi và cách xử lý vào notes để dùng cho reflection.
 
+
 ## 3.5 Phân công song song *(nhóm 4-5 người, tham khảo)*
 
-1 người evidence tiếp tục đến chuẩn A/B · 1-2 người build flow · 1 người prompt + golden set · 1 người spec + chuẩn bị validation. Ai cũng phải giải thích được phần có tên mình — CP5 kiểm ngẫu nhiên.
+1 người evidence tiếp tục đến chuẩn A/B · 1-2 người build flow · 1 người prompt + golden set · 1 người spec/ 1 người chuẩn bị validation. Ai cũng phải giải thích được phần có tên mình — CP5 kiểm ngẫu nhiên.
 
 ---
 
