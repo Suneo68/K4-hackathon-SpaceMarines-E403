@@ -1,83 +1,94 @@
-# kudo-rag-service
+# 🤖 Kudo RAG Service (Discord Bot Assistant)
 
-Real-Time Discord RAG (Retrieval-Augmented Generation) Assistant for AI Course Community (AI20K).
+**Kudo RAG Service** là một trợ lý ảo tự động trên Discord dành cho cộng đồng học tập AI (AI20K), được xây dựng dựa trên công nghệ **RAG** (Retrieval-Augmented Generation) kết hợp với **Google Gemini (gemini-2.5-flash)** và cơ sở dữ liệu vector **ChromaDB**.
 
-## Overview
-`kudo-rag-service` is an automated assistant integrated into Discord:
-- **Knowledge Ingestion**: Automatically monitors knowledge channels (`#thông-báo`, `#tài-nguyên`, `#bài-học`, `#lý-thuyết`), attaches rich metadata (channel name, author, timestamp, jump URL), and upserts text embeddings into ChromaDB.
-- **RAG QA Assistance**: Answers questions posted in QA channels (`#hỏi-đáp`, `#gõ-command`, `#chung`) or direct `@mentions` using ChromaDB retrieved context and Google Gemini (`gemini-2.5-flash`) with source citations.
+---
 
-## Quick Start
+## 🎯 1. Bot này để làm gì? (Mục đích)
+Bot được sinh ra để đóng vai trò như một "Thư viện viên" và "Trợ giảng" mẫn cán trong server Discord của cộng đồng AI20K. 
+Thay vì học viên phải lướt lại hàng trăm tin nhắn cũ để tìm tài liệu hoặc hỏi đi hỏi lại những vấn đề đã được giải đáp, Bot sẽ **tự động học (đọc)** các kiến thức từ các kênh quan trọng và **trả lời ngay lập tức** khi có người hỏi.
 
-### 1. Requirements & Setup
-Ensure Python 3.10+ is installed.
+## 💡 2. Giải quyết vấn đề gì?
+Trong các cộng đồng học tập đông thành viên trên Discord (như AI20K), các vấn đề thường gặp bao gồm:
+- **Trôi tin nhắn:** Tài liệu, bài giảng hay, thông báo quan trọng thường bị trôi mất do lượng tin nhắn chat quá nhiều.
+- **Hỏi lại câu hỏi cũ:** Người mới tham gia hoặc học viên hay hỏi lại những câu hỏi đã được giải đáp trước đó, làm tốn thời gian của mentor/admin.
+- **Khó tìm kiếm:** Tính năng search của Discord chưa đủ thông minh để hiểu ngữ nghĩa (semantic search) câu hỏi của người dùng.
 
+👉 **Giải pháp của Kudo RAG:** Bot tự động lưu trữ kiến thức và trả lời câu hỏi của người dùng ngay lập tức, chính xác, có kèm theo **đường link trích dẫn (jump url)** về bài viết gốc để người dùng có thể đọc thêm chi tiết. Điều này giúp tiết kiệm thời gian cho Mentor và hỗ trợ học viên 24/7.
+
+## ✨ 3. Các chức năng chính
+- **🧠 Tự động thu thập kiến thức (Knowledge Ingestion):** Lắng nghe và tự động "đọc" các tin nhắn từ các kênh kiến thức (VD: `#thông-báo`, `#tài-nguyên`, `#bài-học`, `#lý-thuyết`). Các nội dung này được chuyển hóa thành Vector (Embeddings) và lưu vào cơ sở dữ liệu ChromaDB, kèm theo siêu dữ liệu (metadata như tác giả, thời gian, link tin nhắn).
+- **💬 Trả lời câu hỏi thông minh (RAG QA Assistance):** Khi người dùng đặt câu hỏi trong các kênh `#hỏi-đáp`, `#gõ-command`, `#chung` hoặc trực tiếp `@tag` bot, bot sẽ:
+  1. Tìm kiếm các tài liệu liên quan nhất trong ChromaDB.
+  2. Tổng hợp câu trả lời thông minh dựa trên kiến thức tìm được (bằng Google Gemini).
+  3. Phản hồi kèm theo trích dẫn nguồn (link bài viết gốc).
+- **🛡️ Tránh ảo giác (Anti-Hallucination):** Bot được thiết lập với bộ prompt nghiêm ngặt để chỉ trả lời dựa trên ngữ cảnh đã tìm thấy trong Server, giảm thiểu tối đa việc AI bịa ra câu trả lời sai.
+
+---
+
+## 🚀 4. Làm thế nào để Test / Chạy thử bot?
+
+### 🛠️ Yêu cầu hệ thống
+- Python 3.10+
+- Token Discord Bot & API Key Google Gemini.
+
+### ⚙️ Bước 1: Cài đặt môi trường
+Mở terminal và chạy các lệnh sau:
 ```bash
-# Create virtual environment
+# Tạo môi trường ảo
 python -m venv .venv
 
-# Activate environment (Windows PowerShell)
+# Kích hoạt môi trường (Windows PowerShell)
 .venv\Scripts\Activate.ps1
-# On Linux/macOS: source .venv/bin/activate
+# Nếu dùng Linux/macOS: source .venv/bin/activate
 
-# Install dependencies
+# Cài đặt thư viện
 pip install -r requirements.txt
 ```
 
-### 2. Environment Configuration
-Copy `.env.example` to `.env` and fill in your credentials:
-
+### 🔑 Bước 2: Thiết lập biến môi trường
+Copy file `.env.example` thành `.env` và điền các thông tin bí mật của bạn:
 ```bash
 cp .env.example .env
 ```
+Nội dung file `.env` cần có:
+- `DISCORD_TOKEN`: Lấy từ Discord Developer Portal.
+- `GEMINI_API_KEY`: Lấy từ Google AI Studio.
+- `SANDBOX_GUILD_ID`: ID của Server Discord dùng để test.
+- `CHROMA_HOST` & `CHROMA_PORT`: Cấu hình cho ChromaDB.
 
-Configuration variables:
-- `DISCORD_TOKEN`: Your Discord Bot token.
-- `GEMINI_API_KEY`: Google Gemini API key.
-- `SANDBOX_GUILD_ID`: Sandbox Discord server ID for testing.
-- `CHROMA_HOST` & `CHROMA_PORT`: ChromaDB Server configuration.
+### 🏃 Bước 3: Chạy Bot (Dành cho Development & Test)
+Vì dự án dùng kiến trúc Client-Server cho cơ sở dữ liệu Vector, bạn cần mở **2 Terminal** để chạy song song:
 
-### 3. How to Run (Development)
-Since this project uses a Client-Server architecture for the Vector Database, you need to run two separate processes locally.
-
-**Terminal 1: Start ChromaDB Server**
+**Terminal 1: Khởi động ChromaDB Server**
 ```bash
-# Keep this running to serve the vector database on port 8000
+# Chạy DB ở port 8000
 chroma run --path ./chroma_db
 ```
 
-**Terminal 2: Start Discord Bot (Client)**
+**Terminal 2: Khởi động Bot Discord**
 ```bash
+# Đảm bảo đã activate môi trường ảo
 python main.py
 ```
 
-### 4. Production Deployment (Docker)
-For enterprise/production deployment, use Docker Compose. This ensures the bot and database run continuously in isolated containers.
+### 🧪 Bước 4: Hướng dẫn Test thực tế trên Discord
+1. **Test tính năng Ingestion (Học kiến thức):** 
+   - Vào kênh `#thông-báo` hoặc `#tài-nguyên` trong server Sandbox của bạn.
+   - Nhắn một tin nhắn chứa kiến thức (Ví dụ: *"Lịch học tuần này là thứ 3 và thứ 5 lúc 20h. Các bạn chú ý tham gia đầy đủ"*). Bot sẽ ngầm đọc và lưu vào Database.
+2. **Test tính năng QA (Hỏi đáp):**
+   - Vào kênh `#hỏi-đáp` hoặc `@tag` bot.
+   - Hỏi bot: *"Lịch học tuần này là vào thứ mấy?"*
+   - Bot sẽ trả lời: *"Lịch học tuần này là thứ 3 và thứ 5 lúc 20h"* kèm theo **link dẫn đến tin nhắn gốc** mà bạn vừa tạo ở trên.
 
+---
+
+## 📦 5. Triển khai lên Production (Docker)
+Để hệ thống chạy ổn định 24/7 trên Server/VPS, bạn nên sử dụng Docker Compose.
 ```bash
-# Run the entire stack in the background
+# Khởi chạy toàn bộ hệ thống ngầm
 docker-compose up -d
 
-# View logs
+# Xem log hoạt động của bot
 docker-compose logs -f kudo_bot
-```
-
-### 5. Folder Structure
-```
-kudo-rag-service/
-├── .env.example
-├── .gitignore
-├── requirements.txt
-├── README.md
-├── spec.md
-├── config/
-│   ├── __init__.py
-│   └── settings.py
-├── core/
-│   └── __init__.py
-├── interfaces/
-│   └── discord_bot/
-│       └── __init__.py
-├── eval/
-└── validation/
 ```

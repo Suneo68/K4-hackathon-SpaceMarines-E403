@@ -11,3 +11,5 @@ beautifulsoup4>=4.12.3
 requests>=2.31.0
 langchain-text-splitters>=0.0.1
 pymongo>=4.6.0
+Pillow>=10.0.0
+

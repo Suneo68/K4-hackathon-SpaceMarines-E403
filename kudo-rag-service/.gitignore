@@ -15,8 +15,8 @@ venv/
 *.log
 
 # Local JSON Databases
-core/experts_db.json
-core/curated_topics.json
+experts_db.json
+curated_topics.json
 
 # IDEs & Editors
 .vscode/

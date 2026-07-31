@@ -1,6 +1,7 @@
 import re
 import io
 import os
+import time
 import tempfile
 import logging
 import asyncio
@@ -8,8 +9,54 @@ import requests
 from bs4 import BeautifulSoup
 import fitz  # PyMuPDF
 import docx
+from PIL import Image
+from google import genai
+from config.settings import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
+
+# Initialize GenAI Client once at module level for connection pooling
+_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+def _describe_image(img_path: str) -> str:
+    """Helper function to resize and describe image using Gemini API with retry logic."""
+    if not _client:
+        logger.error("GEMINI_API_KEY is missing. Cannot perform image OCR.")
+        return ""
+
+    try:
+        # 1. Resize image if too large (Throttling / Performance optimization)
+        img = Image.open(img_path)
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        img.thumbnail((1024, 1024)) # Giữ nguyên tỷ lệ, giới hạn max 1024x1024
+        
+        # 2. Structured OCR Prompt for accurate RAG Retrieval
+        prompt = (
+            "Hãy đọc và trích xuất TOÀN BỘ chữ có trong bức ảnh này một cách chính xác nhất.\n"
+            "- Giữ nguyên các mốc thời gian, ngày tháng, hạn chót (deadline), con số và tiêu đề.\n"
+            "- Nếu là thông báo, biểu đồ hoặc sơ đồ, hãy diễn giải đầy đủ các ý chính, yêu cầu và lưu ý chi tiết."
+        )
+        
+        # 3. Call Gemini API with automatic retries for temporary 503 errors
+        for attempt in range(3):
+            try:
+                response = _client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=[img, prompt]
+                )
+                if response and response.text:
+                    return response.text.strip()
+            except Exception as e:
+                logger.warning(f"Gemini Vision API attempt {attempt + 1}/3 failed ({e}). Retrying in 2 seconds...")
+                time.sleep(2)
+                
+        return ""
+    except Exception as e:
+        logger.error(f"Error extracting image text: {e}", exc_info=True)
+        return ""
+
+
 
 async def process_attachments(attachments) -> str:
     """
@@ -54,6 +101,12 @@ async def process_attachments(attachments) -> str:
                 with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
                     text = f.read()
                 extracted_text += f"\n\n--- 📄 NỘI DUNG FILE: {attachment.filename} ---\n{text}\n"
+                
+            elif filename.endswith((".png", ".jpg", ".jpeg", ".webp")):
+                # Chạy ngầm việc gọi API Gemini để không block Bot
+                img_text = await asyncio.to_thread(_describe_image, temp_path)
+                if img_text:
+                    extracted_text += f"\n\n--- 🖼️ MÔ TẢ HÌNH ẢNH: {attachment.filename} ---\n{img_text}\n"
                 
         except Exception as e:
             logger.error(f"Error parsing attachment {filename}: {e}", exc_info=True)

@@ -163,12 +163,15 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             parent_id = str(message.id)
             original_content = ""
             channel_name = getattr(channel, 'name', 'unknown')
+            all_attachments = list(message.attachments)
             
             if isinstance(channel, discord.Thread):
                 parent_id = f"thread_{channel.id}"
                 try:
                     original_msg = await channel.fetch_message(channel.id)
                     original_content = f"Chủ đề [{channel.name}]: {original_msg.content}"
+                    if original_msg.attachments:
+                        all_attachments.extend(original_msg.attachments)
                 except Exception:
                     original_content = f"Chủ đề [{channel.name}]"
             elif message.reference and message.reference.message_id:
@@ -176,6 +179,8 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 try:
                     original_msg = await channel.fetch_message(message.reference.message_id)
                     original_content = f"Câu hỏi gốc: {original_msg.content}"
+                    if original_msg.attachments:
+                        all_attachments.extend(original_msg.attachments)
                 except Exception as e:
                     logger.warning(f"Could not fetch original message {message.reference.message_id}")
             
@@ -210,7 +215,7 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             chunk_ids, chunks_text, metadatas = await prepare_discord_message(
                 message_id=target_message_id,
                 content=final_content,
-                attachments=message.attachments,
+                attachments=all_attachments,
                 channel_name=channel_name,
                 author="System Synthesizer",
                 created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -265,12 +270,15 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             parent_id = str(message.id)
             original_content = ""
             channel_name = getattr(channel, 'name', 'unknown')
+            all_attachments = list(message.attachments)
             
             if isinstance(channel, discord.Thread):
                 parent_id = f"thread_{channel.id}"
                 try:
                     original_msg = await channel.fetch_message(channel.id)
                     original_content = f"Chủ đề [{channel.name}]: {original_msg.content}"
+                    if original_msg.attachments:
+                        all_attachments.extend(original_msg.attachments)
                 except Exception:
                     original_content = f"Chủ đề [{channel.name}]"
             elif message.reference and message.reference.message_id:
@@ -278,6 +286,8 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 try:
                     original_msg = await channel.fetch_message(message.reference.message_id)
                     original_content = f"Câu hỏi gốc: {original_msg.content}"
+                    if original_msg.attachments:
+                        all_attachments.extend(original_msg.attachments)
                 except Exception as e:
                     pass
             
@@ -302,7 +312,7 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 chunk_ids, chunks_text, metadatas = await prepare_discord_message(
                     message_id=target_message_id,
                     content=final_content,
-                    attachments=[],
+                    attachments=all_attachments,
                     channel_name=channel_name,
                     author="System Synthesizer",
                     created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),

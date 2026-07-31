@@ -21,7 +21,7 @@ CURATION_EMOJI = "✅"
 # AI Model Configurations
 LLM_MODEL = "gemini-2.5-flash"
 EMBEDDING_MODEL = "gemini-embedding-2"
-TOP_K_RESULTS = 10
+TOP_K_RESULTS = 5
 
 # Database Configurations
 MONGO_URI = os.getenv("MONGO_URI", "local")
