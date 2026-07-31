@@ -65,4 +65,4 @@ Format: `When [trigger], I want to [motivation], so I can [outcome].`
 **Product hypothesis** (công thức):Nếu giúp học viên đang dùng Discord làm job: tìm kiếm và tổng hợp thông tin chính xác từ thông báo, tài nguyên và thảo luận lớp học tốt hơn ở bước truy vấn/QA nội bộ, bằng AI leverage: real-time RAG trên Discord với grounding và citation, họ sẽ chuyển từ đang tự cuộn chat/hỏi TA/dùng ChatGPT ngoài hệ thống sang dùng Kudo Assistant, vì nhanh hơn, ít phải đọc lướt, và câu trả lời có nguồn nội bộ rõ ràng.
 > ___________
 
-**Assumption nguy hiểm nhất nếu nhóm đang sai** (sẽ kiểm bằng evidence + vòng validation CP5): Nhóm đang giả định rằng pain lớn nhất là retrieval/knowledge surfacing trên Discord, chứ không phải là pain lớn nhất là học thiếu hiểu biết kiến thức chuyên sâu.___________
+**Assumption nguy hiểm nhất nếu nhóm đang sai** (sẽ kiểm bằng evidence + vòng validation CP5): Nhóm đang giả định rằng pain lớn nhất là retrieval/knowledge surfacing trên Discord, chứ không phải là pain lớn nhất là học thiếu hiểu biết kiến thức chuyên sâu.

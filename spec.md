@@ -4,7 +4,7 @@ Hướng: [ ] A — VLearn  [X] B — Trợ lý Học viên  [ ] C — Làn mở
 Loại: [X] Tối ưu tính năng có sẵn  [ ] Tính năng mới
 
 ## §1. User & Job
-- Job executor + workflow (đính kèm worksheet JTBD / ảnh sơ đồ): `tham-khao/worksheet-jtbd-day-du.md`
+- Job executor + workflow (đính kèm worksheet JTBD / ảnh sơ đồ): `tham-khao/worksheet-jtbd-day-du.md` /`tham-khao\Workflow.png`
 - Core JTBD (không tên sản phẩm/AI trong câu): Tìm kiếm và tổng hợp thông tin chính xác từ các thông báo, tài nguyên bài học và thảo luận lớp học trên Discord trong thời gian ngắn nhất mà không bị trôi tin nhắn
 - Problem statement (KHÔNG chữ AI): Học viên mất quá nhiều thời gian để lướt tìm các thông báo, deadline và tài liệu quan trọng bị trôi vùi trong hàng trăm tin nhắn giao tiếp rác trên kênh chung. Hệ quả là họ phải hỏi đi hỏi lại các câu hỏi giống nhau, hoặc dựa vào thông tin truyền miệng thiếu kiểm chứng từ bạn học, dẫn đến việc lỡ hạn nộp bài, làm sai quy định và tạo khối lượng công việc trả lời lặp lại khổng lồ cho đội ngũ trợ giảng (TA).
 - Evidence (chuẩn A và/hoặc B — log đầy đủ trong repo):
@@ -110,7 +110,7 @@ Loại: [X] Tối ưu tính năng có sẵn  [ ] Tính năng mới
 | Lượt chạy | Thời điểm | Tỷ lệ đạt (%) | Ghi chú & nguyên nhân |
 |---|---|---|---|
 | Run 1 | 2026-07-30 20:00 | 70.0% (14/20) | Thiếu OCR trích xuất ảnh thông báo & gặp lỗi quá tải 503 |
-| Run 2 | 2026-07-31 12:30 | 95.0% (19/20) | Đã bổ sung Gemini 2.5 Vision OCR, Retry 503 & HAX Fallback Rules |
+| Run 2 | 2026-07-31 12:30 | 85.0% (19/20) | Đã bổ sung Gemini 2.5 Vision OCR, Retry 503 & HAX Fallback Rules |
 
 ## §8. Phân công & kế hoạch
 - Phân công có tên: spec / evidence / prompt / code / demo
