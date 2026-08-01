@@ -142,17 +142,21 @@ def route_to_expert(user_query: str) -> str:
 
 def summarize_text(text: str) -> str:
     """
-    Summarize a given block of text using Gemini.
+    Summarize a given block of text using Gemini with structured Hot News & Deadlines.
     """
     if not text.strip():
         return "Không có nội dung nào để tóm tắt."
         
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     prompt = (
-        "Bạn là một trợ giảng AI mẫn cán. "
-        "Hãy đọc các tin nhắn/thông báo sau đây và viết một bản tóm tắt thật ngắn gọn, súc tích, "
-        "nhấn mạnh vào các sự kiện, hạn chót (deadline) hoặc tài liệu quan trọng.\n\n"
-        f"Nội dung cần tóm tắt:\n{text}"
+        "Bạn là một trợ lý AI chuyên nghiệp tổng hợp thông tin khóa học AI20K.\n"
+        "Hãy đọc các tin nhắn, bài viết và tài liệu thông báo dưới đây và viết một bản TỔNG HỢP TIN TỨC NỔI BẬT thật súc tích, chuyên nghiệp.\n\n"
+        "VUI LÒNG TRÌNH BÀY BẢN TỔNG HỢP THEO ĐÚNG 3 MỤC SAU (Nếu mục nào không có thông tin thì bỏ qua mục đó):\n"
+        "📢 **1. TIN TỨC & THÔNG BÁO NỔI BẬT**\n"
+        "⏰ **2. DEADLINE & MỐC THỜI GIAN CẦN LƯU Ý**\n"
+        "📌 **3. TÀI LIỆU & LINK LIÊN KẾT QUAN TRỌNG**\n\n"
+        "Yêu cầu: Viết ngắn gọn, có gạch đầu dòng rõ ràng, không suy đoán ngoài văn bản.\n\n"
+        f"NỘI DUNG CẦN TỔNG HỢP:\n{text}"
     )
     
     try:

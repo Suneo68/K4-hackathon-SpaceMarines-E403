@@ -3,7 +3,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from config import settings
-from core.ingestion import prepare_discord_message
+from core.ingestion import prepare_discord_message, is_quality_knowledge_content
+from core.extractors import process_attachments
 from core.vector_store import (
     upsert_documents, delete_document, get_documents_by_message_id, delete_documents_by_message_id,
     async_upsert_documents, async_delete_document, async_get_documents_by_message_id, async_delete_documents_by_message_id
@@ -546,7 +547,7 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             logger.error(f"Error in /ask command: {e}", exc_info=True)
             await interaction.followup.send("⚠️ Có lỗi xảy ra khi xử lý câu hỏi của bạn. Vui lòng thử lại sau!", ephemeral=True)
 
-    @bot.tree.command(name="tong_hop", description="Tổng hợp nhanh các thông báo trong kênh")
+    @bot.tree.command(name="tong_hop", description="Tổng hợp nhanh các thông báo & tin tức hot trong kênh (Có lọc rác & bóc file/ảnh)")
     @app_commands.describe(days="Số ngày muốn tổng hợp (mặc định 1 ngày, tối đa 30 ngày)")
     async def tong_hop_command(interaction: discord.Interaction, days: int = 1):
         if days < 1 or days > 30:
@@ -559,22 +560,44 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             from datetime import datetime, timedelta, timezone
             after_date = datetime.now(timezone.utc) - timedelta(days=days)
             
-            # Thu thập tin nhắn (limit=200 để lấy đủ số lượng tin nhắn trong nhiều ngày)
             messages = []
-            async for msg in interaction.channel.history(limit=200, after=after_date):
-                if not msg.author.bot and msg.content.strip():
-                    # Thêm ngày tháng để AI dễ tóm tắt
-                    date_str = msg.created_at.strftime("%d/%m")
-                    messages.append(f"[{date_str}] [{msg.author.display_name}]: {msg.content}")
+            total_chars = 0
+            
+            # Quét tất cả tin nhắn trong N ngày qua (Dynamic Window)
+            async for msg in interaction.channel.history(limit=500, after=after_date):
+                # 1. Bỏ qua tin nhắn của Bot & lọc rác dữ liệu (Noise filter)
+                if msg.author.bot:
+                    continue
+                    
+                if not is_quality_knowledge_content(msg.content, msg.attachments):
+                    continue
+
+                date_str = settings.format_datetime_gmt7(msg.created_at)
+                msg_text = msg.content.strip()
+                
+                # 2. Bóc tách nội dung File đính kèm / Ảnh Poster nếu có
+                if msg.attachments:
+                    file_text = await process_attachments(msg.attachments)
+                    if file_text:
+                        msg_text += f"\n[Nội dung File/Ảnh đính kèm]:\n{file_text}"
+
+                formatted_entry = f"[{date_str}] [{msg.author.display_name}]: {msg_text}"
+                messages.append(formatted_entry)
+                total_chars += len(formatted_entry)
+                
+                # Giới hạn an toàn 15.000 ký tự để không quá tải Gemini Context
+                if total_chars >= 15000:
+                    logger.info(f"/tong_hop reached 15,000 character safety cap for channel #{interaction.channel.name}")
+                    break
             
             if not messages:
-                await interaction.followup.send(f"Không có thông báo nào trong {days} ngày qua.")
+                await interaction.followup.send(f"Không có thông báo hoặc tin tức nổi bật nào trong {days} ngày qua.")
                 return
                 
-            full_text = "\n".join(messages)
+            full_text = "\n\n---\n\n".join(messages)
             
-            # Gửi cho Gemini tóm tắt
-            summary = await async_summarize_text(f"Hãy tóm tắt các sự kiện trong {days} ngày qua:\n{full_text}")
+            # Gửi cho Gemini tóm tắt chuyên sâu
+            summary = await async_summarize_text(f"Hãy tóm tắt và tổng hợp tin tức nổi bật trong {days} ngày qua tại kênh #{interaction.channel.name}:\n\n{full_text}")
             
             reply_text = f"📢 **TỔNG HỢP THÔNG BÁO #{interaction.channel.name} ({days} NGÀY QUA)**\n\n{summary}"
             
