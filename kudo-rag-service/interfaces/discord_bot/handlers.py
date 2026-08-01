@@ -565,10 +565,13 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             
             # Quét tất cả tin nhắn trong N ngày qua (Dynamic Window)
             async for msg in interaction.channel.history(limit=500, after=after_date):
-                # 1. Bỏ qua tin nhắn của Bot & lọc rác dữ liệu (Noise filter)
+                # 1. Bỏ qua tin nhắn do Bot trả lời VÀ các câu hỏi tag Bot (@Kudo Bot)
                 if msg.author.bot:
                     continue
                     
+                if bot.user and any(u.id == bot.user.id for u in msg.mentions):
+                    continue
+
                 if not is_quality_knowledge_content(msg.content, msg.attachments):
                     continue
 
