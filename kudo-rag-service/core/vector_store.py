@@ -123,3 +123,28 @@ def query_documents(query_text: str, top_k: int = 3) -> tuple[list[str], list[di
     except Exception as e:
         logger.error(f"Failed to query documents from ChromaDB: {e}", exc_info=True)
         return [], []
+
+
+# --- ASYNC NON-BLOCKING WRAPPERS (TO PREVENT EVENT LOOP FREEZING) ---
+import asyncio
+
+async def async_upsert_documents(doc_ids: list[str], texts: list[str], metadatas: list[dict]) -> None:
+    """Async non-blocking wrapper for upsert_documents"""
+    return await asyncio.to_thread(upsert_documents, doc_ids, texts, metadatas)
+
+async def async_get_documents_by_message_id(msg_id: str) -> list[str]:
+    """Async non-blocking wrapper for get_documents_by_message_id"""
+    return await asyncio.to_thread(get_documents_by_message_id, msg_id)
+
+async def async_delete_documents_by_message_id(msg_id: str) -> None:
+    """Async non-blocking wrapper for delete_documents_by_message_id"""
+    return await asyncio.to_thread(delete_documents_by_message_id, msg_id)
+
+async def async_delete_document(doc_id: str) -> None:
+    """Async non-blocking wrapper for delete_document"""
+    return await asyncio.to_thread(delete_document, doc_id)
+
+async def async_query_documents(query_text: str, top_k: int = 3) -> tuple[list[str], list[dict]]:
+    """Async non-blocking wrapper for query_documents"""
+    return await asyncio.to_thread(query_documents, query_text, top_k)
+

@@ -4,10 +4,17 @@ from discord import app_commands
 from discord.ext import commands
 from config import settings
 from core.ingestion import prepare_discord_message
-from core.vector_store import upsert_documents, delete_document, get_documents_by_message_id, delete_documents_by_message_id
-from core.rag_chain import generate_rag_answer, summarize_text, route_to_expert, DEFAULT_FALLBACK, synthesize_thread_answers
+from core.vector_store import (
+    upsert_documents, delete_document, get_documents_by_message_id, delete_documents_by_message_id,
+    async_upsert_documents, async_delete_document, async_get_documents_by_message_id, async_delete_documents_by_message_id
+)
+from core.rag_chain import (
+    generate_rag_answer, summarize_text, route_to_expert, DEFAULT_FALLBACK, synthesize_thread_answers,
+    async_generate_rag_answer, async_summarize_text, async_route_to_expert, async_synthesize_thread_answers, async_generate_rag_answer_with_trace
+)
 from core import experts_db
 from core import nosql_db
+from core.guardrails import check_user_cooldown
 
 logger = logging.getLogger(__name__)
 
@@ -80,18 +87,24 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                         attachments=message.attachments,
                         channel_name=getattr(message.channel, 'name', 'unknown'),
                         author=str(message.author.display_name or message.author.name),
-                        created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                        created_at=settings.format_datetime_gmt7(message.created_at),
                         jump_url=message.jump_url
                     )
 
                     if chunk_ids:
-                        upsert_documents(chunk_ids, chunks_text, metadatas)
+                        await async_upsert_documents(chunk_ids, chunks_text, metadatas)
                         logger.info(f"Successfully auto-ingested message ID {message.id} from #{channel_name} (Author: {message.author})")
                 except Exception as e:
                     logger.error(f"Error during auto-ingestion for message {message.id}: {e}", exc_info=True)
 
         # Logic 2: QA RAG Response ONLY when @Mentioned
         if is_mentioned:
+            # Per-User Cooldown Rate Limiter Check
+            is_allowed, remaining = check_user_cooldown(str(message.author.id))
+            if not is_allowed:
+                await message.reply(f"⏳ Bạn thao tác quá nhanh! Vui lòng chờ {remaining}s nữa trước khi hỏi tiếp nhé.", mention_author=True)
+                return
+
             try:
                 async with message.channel.typing():
                     # Clean bot mention from content string
@@ -105,10 +118,10 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                         return
                     
                     if user_query:
-                        answer, sources = generate_rag_answer(user_query)
+                        answer, sources = await async_generate_rag_answer(user_query)
 
                         if answer == DEFAULT_FALLBACK:
-                            expert_tag = route_to_expert(user_query)
+                            expert_tag = await async_route_to_expert(user_query)
                             mentions = ""
                             if expert_tag:
                                 experts = experts_db.get_experts_by_tag(expert_tag)
@@ -228,7 +241,7 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 
             if len(active_messages) > 1:
                 logger.info(f"Synthesizing {len(active_messages)} active chunks for {parent_id}.")
-                synthesized = synthesize_thread_answers(active_messages[:-1], active_messages[-1])
+                synthesized = await async_synthesize_thread_answers(active_messages[:-1], active_messages[-1])
             else:
                 synthesized = active_messages[0]
                 
@@ -237,7 +250,7 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             target_message_id = f"synthesized_{parent_id}"
             
             # Xóa các chunk cũ của parent_id này trước khi lưu đè
-            delete_documents_by_message_id(target_message_id)
+            await async_delete_documents_by_message_id(target_message_id)
 
             # Ingest to Vector DB
             chunk_ids, chunks_text, metadatas = await prepare_discord_message(
@@ -246,12 +259,12 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 attachments=all_attachments,
                 channel_name=channel_name,
                 author="System Synthesizer",
-                created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                created_at=settings.format_datetime_gmt7(message.created_at),
                 jump_url=message.jump_url
             )
 
             if chunk_ids:
-                upsert_documents(chunk_ids, chunks_text, metadatas)
+                await async_upsert_documents(chunk_ids, chunks_text, metadatas)
                 logger.info(f"Upserted unified chunk {target_message_id} via reaction by {payload.member.display_name}")
                 await message.reply(f"✅ Đã ghi nhận và tổng hợp kiến thức vào RAG! (Được duyệt bởi <@{payload.member.id}>)", mention_author=False)
 
@@ -326,12 +339,12 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             active_messages = nosql_db.get_active_messages(parent_id)
             target_message_id = f"synthesized_{parent_id}"
             
-            delete_documents_by_message_id(target_message_id)
+            await async_delete_documents_by_message_id(target_message_id)
             
             if active_messages:
                 # Vẫn còn bình luận đúng -> Tổng hợp lại các bình luận còn lại
                 if len(active_messages) > 1:
-                    synthesized = synthesize_thread_answers(active_messages[:-1], active_messages[-1])
+                    synthesized = await async_synthesize_thread_answers(active_messages[:-1], active_messages[-1])
                 else:
                     synthesized = active_messages[0]
                     
@@ -343,11 +356,11 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                     attachments=all_attachments,
                     channel_name=channel_name,
                     author="System Synthesizer",
-                    created_at=message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    created_at=settings.format_datetime_gmt7(message.created_at),
                     jump_url=message.jump_url
                 )
                 if chunk_ids:
-                    upsert_documents(chunk_ids, chunks_text, metadatas)
+                    await async_upsert_documents(chunk_ids, chunks_text, metadatas)
                 logger.info(f"Re-synthesized chunk {target_message_id} after removing message {payload.message_id}")
             else:
                 logger.info(f"Deleted chunk {target_message_id} because all curations were removed.")
@@ -389,11 +402,11 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                     attachments=after.attachments,
                     channel_name=getattr(after.channel, 'name', 'unknown'),
                     author=str(after.author.display_name or after.author.name),
-                    created_at=after.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    created_at=settings.format_datetime_gmt7(after.created_at),
                     jump_url=after.jump_url
                 )
                 if chunk_ids:
-                    upsert_documents(chunk_ids, chunks_text, metadatas)
+                    await async_upsert_documents(chunk_ids, chunks_text, metadatas)
                     logger.info(f"Updated message ID {after.id} in ChromaDB")
 
     @bot.event
@@ -407,7 +420,7 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             channel_topic = f"{channel_topic} {parent_topic}"
         
         if settings.KNOWLEDGE_TOPIC_TAG in channel_topic.upper():
-            delete_document(str(message.id))
+            await async_delete_document(str(message.id))
             logger.info(f"Deleted message ID {message.id} from ChromaDB due to Discord deletion")
 
     @bot.command(name='sync_history')
@@ -442,11 +455,11 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 attachments=msg.attachments,
                 channel_name=getattr(ctx.channel, 'name', 'unknown'),
                 author=str(msg.author.display_name or msg.author.name),
-                created_at=msg.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                created_at=settings.format_datetime_gmt7(msg.created_at),
                 jump_url=msg.jump_url
             )
             if chunk_ids:
-                upsert_documents(chunk_ids, chunks_text, metadatas)
+                await async_upsert_documents(chunk_ids, chunks_text, metadatas)
                 count += 1
 
                     
@@ -455,15 +468,21 @@ def setup_bot_handlers(bot: discord.Client) -> None:
     @bot.tree.command(name="ask", description="Hỏi Kudo Bot (Câu trả lời sẽ được ẩn, chỉ mình bạn thấy)")
     @app_commands.describe(question="Nhập câu hỏi của bạn vào đây")
     async def ask_command(interaction: discord.Interaction, question: str):
+        # Per-User Cooldown Rate Limiter Check
+        is_allowed, remaining = check_user_cooldown(str(interaction.user.id))
+        if not is_allowed:
+            await interaction.response.send_message(f"⏳ Bạn thao tác quá nhanh! Vui lòng chờ {remaining}s nữa trước khi hỏi câu tiếp theo nhé.", ephemeral=True)
+            return
+
         # Trả lời tức thì để tránh Discord báo lỗi "This interaction failed" (vì RAG xử lý lâu)
         await interaction.response.defer(ephemeral=True)
         
         try:
-            answer, sources = generate_rag_answer(question)
+            answer, sources = await async_generate_rag_answer(question)
             
             reply_text = answer
             if answer == DEFAULT_FALLBACK:
-                expert_tag = route_to_expert(question)
+                expert_tag = await async_route_to_expert(question)
                 if expert_tag:
                     experts = experts_db.get_experts_by_tag(expert_tag)
                     if experts:
@@ -514,7 +533,7 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             full_text = "\n".join(messages)
             
             # Gửi cho Gemini tóm tắt
-            summary = summarize_text(f"Hãy tóm tắt các sự kiện trong {days} ngày qua:\n{full_text}")
+            summary = await async_summarize_text(f"Hãy tóm tắt các sự kiện trong {days} ngày qua:\n{full_text}")
             
             reply_text = f"📢 **TỔNG HỢP THÔNG BÁO #{interaction.channel.name} ({days} NGÀY QUA)**\n\n{summary}"
             
@@ -604,10 +623,15 @@ def setup_bot_handlers(bot: discord.Client) -> None:
     @bot.tree.command(name="trace", description="[Profiling] Kiểm tra latency, token usage và luồng logic RAG của một câu hỏi")
     @app_commands.describe(question="Nhập câu hỏi để chạy thử nghiệm profiling")
     async def trace_command(interaction: discord.Interaction, question: str):
+        # Per-User Cooldown Rate Limiter Check
+        is_allowed, remaining = check_user_cooldown(str(interaction.user.id))
+        if not is_allowed:
+            await interaction.response.send_message(f"⏳ Bạn thao tác quá nhanh! Vui lòng chờ {remaining}s nữa trước khi thử nghiệm nhé.", ephemeral=True)
+            return
+
         await interaction.response.defer(ephemeral=True)
         try:
-            from core.rag_chain import generate_rag_answer_with_trace
-            metrics = generate_rag_answer_with_trace(question)
+            metrics = await async_generate_rag_answer_with_trace(question)
             
             embed = discord.Embed(
                 title="🛠️ RAG PIPELINE DIAGNOSTICS & PROFILING",

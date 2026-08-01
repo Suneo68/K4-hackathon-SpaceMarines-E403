@@ -1,7 +1,15 @@
 import json
 import sys
+import io
 import logging
 from pathlib import Path
+
+# Force UTF-8 output encoding for Windows consoles
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -16,9 +24,12 @@ logger = logging.getLogger(__name__)
 
 def run_evaluation() -> None:
     """
-    Load golden_set.json, execute RAG pipeline, and evaluate accuracy pass rate.
+    Load golden_set_v2.json (or golden_set.json), execute RAG pipeline, and evaluate accuracy pass rate.
     """
-    golden_set_path = PROJECT_ROOT / "eval" / "golden_set.json"
+    golden_set_path = PROJECT_ROOT / "eval" / "golden_set_v2.json"
+    if not golden_set_path.exists():
+        golden_set_path = PROJECT_ROOT / "eval" / "golden_set.json"
+        
     if not golden_set_path.exists():
         print(f"❌ Error: Golden set file not found at {golden_set_path}")
         return
@@ -47,7 +58,11 @@ def run_evaluation() -> None:
             print(f"   Generated Answer: {answer}")
             print(f"   Sources Count: {len(sources)}")
 
-            is_pass = expected.lower() in answer.lower()
+            if isinstance(expected, list):
+                is_pass = any(exp.lower() in answer.lower() for exp in expected)
+            else:
+                is_pass = expected.lower() in answer.lower()
+
             if is_pass:
                 passed += 1
                 print("   Status: ✅ PASS\n")
