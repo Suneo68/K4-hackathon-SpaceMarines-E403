@@ -81,6 +81,12 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 logger.debug(f"Ignored ingestion: Message from {message.author} in #{channel_name} (Insufficient permissions)")
             else:
                 try:
+                    # 1. Thả reaction ⏳ báo hiệu Bot đang bắt đầu xử lý bất đồng bộ
+                    try:
+                        await message.add_reaction("⏳")
+                    except Exception:
+                        pass
+
                     chunk_ids, chunks_text, metadatas = await prepare_discord_message(
                         message_id=str(message.id),
                         content=message.content,
@@ -94,8 +100,28 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                     if chunk_ids:
                         await async_upsert_documents(chunk_ids, chunks_text, metadatas)
                         logger.info(f"Successfully auto-ingested message ID {message.id} from #{channel_name} (Author: {message.author})")
+                        
+                        # Xử lý xong: Đổi reaction ⏳ sang ✅
+                        try:
+                            if bot.user:
+                                await message.remove_reaction("⏳", bot.user)
+                            await message.add_reaction("✅")
+                        except Exception:
+                            pass
+                    else:
+                        # Không có nội dung chất lượng để nạp (Noise filter / rác) -> Gỡ ⏳
+                        try:
+                            if bot.user:
+                                await message.remove_reaction("⏳", bot.user)
+                        except Exception:
+                            pass
                 except Exception as e:
                     logger.error(f"Error during auto-ingestion for message {message.id}: {e}", exc_info=True)
+                    try:
+                        if bot.user:
+                            await message.remove_reaction("⏳", bot.user)
+                    except Exception:
+                        pass
 
         # Logic 2: QA RAG Response ONLY when @Mentioned
         if is_mentioned:
@@ -266,7 +292,14 @@ def setup_bot_handlers(bot: discord.Client) -> None:
             if chunk_ids:
                 await async_upsert_documents(chunk_ids, chunks_text, metadatas)
                 logger.info(f"Upserted unified chunk {target_message_id} via reaction by {payload.member.display_name}")
-                await message.reply(f"✅ Đã ghi nhận và tổng hợp kiến thức vào RAG! (Được duyệt bởi <@{payload.member.id}>)", mention_author=False)
+                try:
+                    confirm_msg = await message.reply(
+                        f"✅ Đã ghi nhận và tổng hợp kiến thức vào RAG! (Được duyệt bởi <@{payload.member.id}>)",
+                        mention_author=False
+                    )
+                    await confirm_msg.delete(delay=7)
+                except Exception as err:
+                    logger.debug(f"Could not send/delete reaction curation notification: {err}")
 
         except Exception as e:
             logger.error(f"Error during reaction curation: {e}", exc_info=True)
@@ -367,7 +400,15 @@ def setup_bot_handlers(bot: discord.Client) -> None:
                 
             logger.info(f"Curated message ID {payload.message_id} removed via un-reaction by {member.display_name}")
             message = await channel.fetch_message(payload.message_id)
-            await channel.send(f"🗑️ Đã thu hồi kiến thức (Do <@{member.id}> bỏ duyệt).", reference=message, mention_author=False)
+            try:
+                confirm_msg = await channel.send(
+                    f"🗑️ Đã thu hồi kiến thức (Do <@{member.id}> bỏ duyệt).",
+                    reference=message,
+                    mention_author=False
+                )
+                await confirm_msg.delete(delay=7)
+            except Exception as err:
+                logger.debug(f"Could not send/delete reaction removal notification: {err}")
             
         except Exception as e:
             logger.error(f"Error during reaction removal curation: {e}", exc_info=True)
